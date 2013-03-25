@@ -6,14 +6,50 @@ import time
 import threading
 import random
 
+# global constants
 
+
+class Cursor(object):
+    '''A class for a custom animated cursor'''
+    sprite=None
+    UP_DOWN=1
+    LEFT_RIGHT=0
+
+    def __init__(self, pos, dir, width, height):
+        '''dir is 1 (up/down) 0 (left/right)'''
+        self.height=height
+        self.width=width
+        self.dir=dir
+        
+        self.rect = pygame.Rect ( pos[0], pos[1], width , height )
+        if Cursor.sprite ==None:
+            Cursor.sprite=pygame.image.load('BrickWall.jpg').convert()
+
+    def on_click(self, pos):
+        '''Define a click action'''
+        if self.dir==UP_DOWN :
+            self.dir=LEFT_RIGHT
+        else:
+            self.dir=UP_DOWN
+        # swap height and width to rotate cursor
+        temp = self.width
+        self.width = self.height
+        self.height = temp
+        #update the rectangle in which it lives
+        self.rect = [ pos[0], pos[1], self.width, self.height ]
+        print self.rect
+
+    def on_move(self, pos):
+        '''define a mouse move action'''
+        self.rect = [ pos[0], pos[1], self.width, self.height ]
+        print "on_move() rect=" , self.rect
+        
+        
 class Wall:
     '''a class for wall that grows until it hits something'''
     sprite=None
     UP_DOWN=1
     LEFT_RIGHT=0
-    
-    
 
     def __init__(self, pos, dir, width, height):
         '''dir is 1 (up/down) 0 (left/right)'''
@@ -26,6 +62,7 @@ class Wall:
         self.pos = pygame.Rect ( pos[0], pos[1], 10 , 10 )
         self.v=10
         self.growing=[True,True] #for the 2 ends L/R or Up/Down
+        print "Wall() pos=", pos
 
 
     def grow(self):
@@ -66,9 +103,9 @@ class Wall:
                     growing[0]=False
             elif self.dir==Wall.UP_DOWN and wall.dir==Wall.LEFT_RIGHT:
                 if self.pos.top< wall.pos.top:
-                    growing[0]=False
+                    self.growing[0]=False
                 if self.pos.bottom > wall.pos.bottom :
-                    growing[1]=False
+                    self.growing[1]=False
             
                 
             print "self.pos", self.pos
@@ -77,11 +114,12 @@ class Wall:
                 self.growing=False   
     
 class Ball:
-    '''a class for ball'''
+    '''a class for a ball'''
     def __init__(self, velocity):
         self.sprite=pygame.image.load('ball.gif').convert()
         self.pos = self.sprite.get_rect().move(0, 0)
         self.v=velocity #velocity [x, y]
+        print "Ball() pos=", self.pos
 
     def move(self):
         a=[0,0]
@@ -91,7 +129,7 @@ class Ball:
         self.pos = self.pos.move(self.v[0], self.v[1])
 
     # test for a collision with the
-    # edge and bounce is needed
+    # edge and bounce if needed
     def edge_collide(self, x, y):
         if self.pos.top < 0 :
             self.pos.top=0
@@ -149,9 +187,10 @@ def main():
     last_click = (time.clock(),    (0, 0), -1    )
     drag=False
     running=True
-    balls=[Ball([3,4]), Ball([4,3]), Ball([5,2])]
-    walls=[]#[Wall((100,100) , Wall.LEFT_RIGHT  , win_height, win_width), \
+    balls=[Ball([3,4])] #, Ball([4,3]), Ball([5,2])]
+    walls=[Wall((100,100) , Wall.LEFT_RIGHT  , win_height, win_width) ] #, \
            #Wall((400,300) , Wall.UP_DOWN , win_height, win_width) ]
+    cursor=Cursor((100,100), Cursor.LEFT_RIGHT, win_height, win_height)
 
     # Main loop
     single_click=False
@@ -170,12 +209,21 @@ def main():
         pygame.time.delay(33)
         #update all the walls
         for w in walls:
+            # grow any of the walls if necessary
+            w.grow()
             for w1 in walls:
                 if w1!=w:
                     w.test_collide(w1)
-            screen.blit(o.sprite, o.pos ) 
+            # re-draw balls
+            #screen.blit(o.sprite, o.pos )
+            #re-draw walls
             screen.blit(w.sprite, w.pos, w.pos )
-            
+        #reposition the cursor
+        if cursor!=None:
+            screen.blit(background.background, cursor.rect, cursor.rect)
+            screen.blit(cursor.sprite, cursor.rect )
+
+        # we are done so ...
         pygame.display.update()
 
         
@@ -198,7 +246,9 @@ def main():
                  running = False
             elif event.type == pygame.MOUSEMOTION:
                 coords=event.dict['pos']
-                #print "cursor->", my_mandle.scale_coords((coords))
+                #print "cursor->", coords
+                if cursor!=None:
+                    cursor.on_move(coords)
                 dx, dy=event.dict['rel']
                 if event.dict['buttons'][0]==1:
                     drag=True
@@ -214,6 +264,8 @@ def main():
                 else :
                     #single click
                     print "single_click:", single_click
+                    if cursor!=None:
+                        cursor.on_click(coords)
                     single_click=True
                 last_click = ( now, (0, 0), 0)
         
