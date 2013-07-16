@@ -14,42 +14,43 @@ class Cursor(object):
     sprite=None
     UP_DOWN=1
     LEFT_RIGHT=0
-    _width=30
-    _height=10
 
-    def __init__(self, pos, dir):
+    def __init__(self, pos, dir ):
         '''dir is 1 (up/down) 0 (left/right)'''
         self.dir=dir
-        self._rect=self._get_rect(dir, pos) 
+        if dir==Cursor.UP_DOWN:
+            self._height=30
+            self._width=10
+        else:
+            self._height=10
+            self._width=30
+        self._rect = pygame.Rect ( pos[0], pos[1], self._width , self._height )
         if Cursor.sprite==None:
             Cursor.sprite=pygame.image.load('BrickWall.jpg').convert()
 
+    def get_rect(self):
+        '''Returns the pygame rectangle enclosing the shape'''
+        return self._rect
+
     def on_click(self, pos):
         '''Define a click action'''
-        # rotate the cursor 90 degrees
-        if self.dir==self.UP_DOWN :
-            self.dir=self.LEFT_RIGHT
+        if self.dir==Cursor.UP_DOWN :
+            self.dir=Cursor.LEFT_RIGHT
         else:
-            self.dir=self.UP_DOWN
-        self._rect = self._get_rect(self.dir, pos)
-        print "on_click rect=", self._rect
+            self.dir=Cursor.UP_DOWN
+        # swap height and width to rotate cursor
+        temp = self._width
+        self._width = self._height
+        self._height = temp
+        #update the rectangle in which it lives
+        self._rect = pygame.Rect( pos[0], pos[1], self._width, self._height )
+        print "on_click() _rect=", self._rect
 
     def on_move(self, pos):
         '''define a mouse move action'''
-        self._rect = self._get_rect(self.dir, pos)
-        #print "on_move() rect=" , self._rect
-
-    def get_rect(self):
-        return self._rect
-
-# Private:
-    def _get_rect(self, dir, pos):
-        '''return a rectangle enclosing the sprite'''
-        if dir==Cursor.LEFT_RIGHT:
-            rect = pygame.Rect(pos[0], pos[1], Cursor._width, Cursor._height )
-        else:
-            rect = pygame.Rect(pos[0], pos[1], Cursor._height, Cursor._width )
-        return rect
+        self._rect = pygame.Rect( pos[0], pos[1], self._width, self._height )
+        print "on_move() _rect=" , self._rect
+        
         
 class Wall:
     '''a class for wall that grows until it hits something'''
@@ -65,7 +66,7 @@ class Wall:
         if Wall.sprite ==None:
             Wall.sprite=pygame.image.load('BrickWall.jpg').convert()
         self.sprite=Wall.sprite
-        self.pos = pygame.Rect( pos[0], pos[1], 10 , 10 )
+        self.pos = pygame.Rect ( pos[0], pos[1], 10 , 10 )
         self.v=10
         self.growing=[True,True] #for the 2 ends L/R or Up/Down
         print "Wall() pos=", pos
@@ -112,11 +113,14 @@ class Wall:
                     self.growing[0]=False
                 if self.pos.bottom > wall.pos.bottom :
                     self.growing[1]=False
-
+            
+                
+            print "self.pos", self.pos
+            print "wall.pos", wall.pos
             if wall.pos.colliderect(self.pos):
-                self.growing=[False, False]   
+                self.growing=[False , False]  
     
-class Ball:
+class Ball(object):
     '''a class for a ball'''
     def __init__(self, velocity):
         self.sprite=pygame.image.load('ball.gif').convert()
@@ -175,46 +179,6 @@ class Background:
         # convert the background format to an appropriate one
         self.background.fill((0,0,0))
 
-class PygameEventHandler(object)
-    '''Base class for handling pygame events'''
-
-    def __init__(self):
-        #location of the last click
-        self._coords=None
-    
-    def handle_events():
-        now=time.clock()
-        # detect a single click
-        single_click=false
-        if now -last_click[0] >= 0.5:
-            if cursor!=None:
-                cursor.on_click(coords)
-                
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                 event_handler.on_quit()
-            elif event.type == pygame.MOUSEMOTION:
-                self.on_move(pos)
-                #coords=event.dict['pos']
-                #print "cursor->", coords
-                #if cursor!=None:
-                #    cursor.on_move(coords)
-                #dx, dy=event.dict['rel']
-                #if event.dict['buttons'][0]==1:
-                #    drag=True
-            elif event.type == pygame.MOUSEBUTTONUP:
-                self._coords=event.dict['pos']
-                if drag:
-                    #dragging must have finished
-                    drag=False
-                elif now-last_click[0] < 0.5:
-                    # Double click!
-                    #walls.append(Wall((coords), cursor.get_dir(), win_width, win_height))
-                    self.on_dbl_click()
-                else :
-                    #just record it and wait
-                    print "single_click"
-                last_click = ( now, (0, 0), 0)    
     
 def main():
     # parameters
@@ -233,14 +197,13 @@ def main():
     balls=[Ball([3,4])] #, Ball([4,3]), Ball([5,2])]
     walls=[Wall((100,100) , Wall.LEFT_RIGHT  , win_height, win_width) ] #, \
            #Wall((400,300) , Wall.UP_DOWN , win_height, win_width) ]
-
-    # Create a cursor
-    cursor=Cursor((100,100), Cursor.LEFT_RIGHT )
+    cursor=Cursor((100,100), Cursor.LEFT_RIGHT)
 
     # Main loop
     single_click=False
     dir=Wall.UP_DOWN
     while running:
+        pygame.time.delay(33)
         #delete all the balls
         for o in balls:
             screen.blit(background.background, o.pos, o.pos)
@@ -251,7 +214,7 @@ def main():
             for w in walls:
                 o.test_collide(w)
             screen.blit(o.sprite, o.pos )      
-        pygame.time.delay(33)
+  
         #update all the walls
         for w in walls:
             # grow any of the walls if necessary
@@ -263,21 +226,61 @@ def main():
             #screen.blit(o.sprite, o.pos )
             #re-draw walls
             screen.blit(w.sprite, w.pos, w.pos )
+        
+       
+        #single click
+        now=time.clock()
+        #print "dir:", dir, "single_click:", single_click
+        if single_click==True and now -last_click[0] >= 0.5:
+            single_click=False
+            print "dir", dir
+            if dir==Wall.LEFT_RIGHT :
+                dir=Wall.UP_DOWN
+            else:
+                dir=Wall.LEFT_RIGHT
+            print "dir", dir
+
         #delete the cursor
         if cursor!=None:
-            rect=cursor.get_rect()
-            screen.blit(background.background, rect, rect)     
-      
-        # handle mouse, keyboard and other events
-        handle_events(cursor, walls, last_click, running)
+            screen.blit(background.background, cursor.get_rect(),cursor.get_rect())
 
-        #draw the cursor
+            
+        # Handle pygame events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                 running = False
+            elif event.type == pygame.MOUSEMOTION:
+                coords=event.dict['pos']
+                #print "cursor->", coords
+                if cursor!=None:
+                    cursor.on_move(coords)
+                dx, dy=event.dict['rel']
+                if event.dict['buttons'][0]==1:
+                    drag=True
+            elif event.type == pygame.MOUSEBUTTONUP:
+                coords=event.dict['pos']
+                if drag:
+                    #dragging must have finished
+                    drag=False
+                elif now -last_click[0] < 0.5:
+                    # Double click!
+                    walls.append(Wall((coords), dir, win_width, win_height))
+                    single_click=False
+                else :
+                    #single click
+                    print "single_click:", single_click
+                    if cursor!=None:
+                        cursor.on_click(coords)
+                    single_click=True
+                last_click = ( now, (0, 0), 0)
+                
+        #reposition the cursor
         if cursor!=None:
-            rect=cursor.get_rect()
-            screen.blit(cursor.sprite, rect, rect)
+            screen.blit(cursor.sprite, cursor.get_rect(), cursor.get_rect() )
 
         # we are done so ...
         pygame.display.update()
+
 try:
     main()
 except Exception, e:
