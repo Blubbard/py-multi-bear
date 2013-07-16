@@ -12,7 +12,7 @@ import random
 # Thing that connects an input node and an output node.
 # Each filter has a pipe for an input when it is created
 # The _in value is sent when connected to another filters output.
-class Pipe:
+class IPipe:
     def write(self, data):
         raise NotImplementedError()
 
@@ -23,24 +23,22 @@ class Pipe:
          raise NotImplementedError(self)
 
     '''The filter which writes to this pipe'''
-    def getIn(self):
+    def getIFilter(self):
         raise NotImplementedError()
 
     '''The filter being writtern to'''
-    def getOut(self):
+    def getOFilter(self):
         raise NotImplementedError(self)
 
 ''' Base class for all filters'''
 class Filter:
-    def __init__(self, name):
-        self._name = name
-        self._in = []
-        self._out = []
+    def __init__(self):
+        raise Exception("Filter is abstract")
 
     ''' The >> operator connects two filters'''
     def __rshift__(self, other):
         print "Filter >>"
-        self.set_out(other.i())
+        self.setOut(other.i())
         print other.name(), "_in = ", self.name()
         return other
 
@@ -54,10 +52,10 @@ class Filter:
     def outs(self):
         return self._out
 
-    def set_out(self, ins):
-        print "set_out"
+    def setOut(self, ins):
+        print "setOut"
         for i in range(len(ins)):
-            self._out[i] = ins[i]
+            self.outs()[i] = ins[i]
             # tell the pipe who we are i.e double link
             ins[i].setIn(self)
 
@@ -65,11 +63,13 @@ class Filter:
         return  self.name() + " _in: " + str(self._in) + \
         " _out: " + str(self._out)
 
-class S(Filter):
+''' A pair of filters '''
+class S(object):
     def __init__(self, s1, s2):
         self._s1 = s1
         self._s2 = s2
 
+    ''' Connect a pair of filters to another filter '''
     def __rshift__(self, other):
         print "S >>"
         print other.name(), "_in = ", self.name()
@@ -99,7 +99,7 @@ class S(Filter):
 MORE_LATER = "ML"
 MORE_NOW = "MN"
 
-class InN(Pipe):
+class Pipe(IPipe):
     def __init__(self, filter, inputNum):
         self._filter = filter
         self._state = MORE_NOW
@@ -110,16 +110,16 @@ class InN(Pipe):
 
     def setState(self, state):
         if self.getState() != state:
-            self.getIn().setState(state)
+            self.getIFilter().setState(state)
             self._state = state
 
     def getState(self):
         return self._state
 
-    def getOut(self):
+    def getOFilter(self):
         return self._filter
 
-    def getIn(self):
+    def getIFilter(self):
         return self._in
 
     def setIn(self, filter):
@@ -132,27 +132,26 @@ def other(input):
     return 1
       
 class Join(Filter):
-    def __init__(self, name):
-        self._in = [InN(self, 0), InN(self, 1)]
+    def __init__(self, name, lessThanFunc):
+        self._in = [Pipe(self, 0), Pipe(self, 1)]
         self._out = [None]
         self._name = name
         self._tmp = [None, None]
+        self._lt = lessThanFunc
         
     def write(self, data, input):
        print self.name(), "got", data, "from", input
        self._tmp[input] = data
        other_ = self._tmp[other(input)]
-       if data == other_:
-           self._out[0].write(data)
-           # when we write the pipe might call set state which percolates back up
-       elif other_ == None or data > other_:
+
+       if other_ == None or self._lt(other_, data):
            self._in[input].setState(MORE_LATER)
            self._in[other(input)].setState(MORE_NOW)
-       elif data < other_:
+       elif self._lt(data, other_):
            self._in[input].setState(MORE_NOW)
            self._in[other(input)].setState(MORE_LATER)
        else:
-          raise Exception()
+           self._out[0].write(data)
 
     def setState(self, state):
         if state == MORE_NOW:
@@ -171,7 +170,7 @@ class Join(Filter):
 
 class Sort(Filter):
     def __init__(self, name):
-        self._in = [InN(self, 0)]
+        self._in = [Pipe(self, 0)]
         self._out = [None]
         self._name = name
         self._data = []
@@ -206,21 +205,16 @@ class Sort(Filter):
         return self._in[0].getState()
 
 class Partition(Filter):
-    def __init__(self, name):
-        self._in = [InN(self,0)]
+    def __init__(self, name, func):
+        self._in = [Pipe(self,0)]
         self._out = [None, None]
         self._name = name
+        self._func = func
 
     def write(self, data, inputNum):
-        if data % 2 == 0:
-            self._out[0].write(data)
-        else:
-            self._out[1].write(data)
-
-    '''Set the filter which writes to this pipe '''
-    def setIn(self, filter):
-        self._inFilter = filter
-
+        res = self._func(data)
+        self._out[res].write(data)
+  
     ''' Partition never holds data so eof is always true'''
     def eof(self):
         return True
@@ -259,14 +253,14 @@ class FileIn(Filter):
     def eof(self):
         return not (self._i < self._len)
 
-class FileOut(Filter, Pipe):
+class FileOut(Filter):
     def __init__(self, name):
         self._out = []
-        self._in = [self]
+        self._in = [Pipe(self, 0)]
         self._name = name
         self._data = []
 
-    def write(self, data):
+    def write(self, data, inputNum):
        self._data.append(data)
 
     def get_data(self):
@@ -279,12 +273,9 @@ class FileOut(Filter, Pipe):
     def setIn(self, filter):
         self._inIn = filter
 
-    def getIn(self):
-        return self._inIn
-
-    # An output file does not have outputs
-    def getOut(self):
-        return None
+    ''' An output file never holds on to data '''
+    def eof(self):
+        return True
 
 
 class Enjin(object):
@@ -312,8 +303,8 @@ class Enjin(object):
         tmp = []
         for i in self._ins:
             for j in i.outs():
-                if j.getOut() != None:
-                    tmp.append(j.getOut())
+                if j.getOFilter() != None:
+                    tmp.append(j.getOFilter())
 
         print "tmp", tmp
 
@@ -330,12 +321,16 @@ class Enjin(object):
 
 import unittest
 
+def lt(data1, data2):
+    return data1 < data2
+
 class TestEnjin(unittest.TestCase):
+
 
     def testJoin(self):
         customers = FileIn('customers', (1, 3, 4, 5, 5, 7, 8, 10))
         orders = FileIn('orders', (5, 6, 7, 7, 10))
-        join_by_cid = Join('join_by_cid')
+        join_by_cid = Join('join_by_cid', lt)
         cust_orders = FileOut('cust_orders')
 
         S(customers, orders) >> join_by_cid >> cust_orders
@@ -348,8 +343,8 @@ class TestEnjin(unittest.TestCase):
         customers = FileIn('customers', (1, 3, 4, 5, 7, 8, 10))
         orders = FileIn('orders', (5, 6, 7, 7, 10))
         items = FileIn('items', (6, 7, 8))
-        join1 = Join('join_cust_orders')
-        join2 = Join('join_with_items')
+        join1 = Join('join_cust_orders', lt)
+        join2 = Join('join_with_items', lt)
         output = FileOut('output')
 
         S(customers, orders) >> join1 
@@ -360,7 +355,11 @@ class TestEnjin(unittest.TestCase):
         self.assertEqual(output.get_data(), [ 7])
 
     def testPartition(self):
-        part_by_id = Partition('part_by_id')
+
+        def func(data):
+            return data % 2
+
+        part_by_id = Partition('part_by_id', func)
         items = FileIn('items', [n + 1  for n in range(10)])
         odds = FileOut('odds')
         evens = FileOut('evens')
@@ -382,7 +381,32 @@ class TestEnjin(unittest.TestCase):
         enjin.start()
         self.assertEqual(sorted_primes.get_data(), [2, 5, 11, 17, 19, 23])
 
+    def testAggregate(self):
+        def groupBy(data):
+            return data % 2
+        
+        def agg(data, state):
+            state.count += 1
+
+        def init(data):
+            state.count = 0
+
+        def out(key, state):
+            if key == 0:
+                return {'Odds': state.count}
+            else:
+                return {'Evens': state.count}
+             
+         
+        nums = FileIn('numbers', [n + 1  for n in range(11)])
+        counts = FileOut('counts')
+
+        nums >> Aggregate('count odds and evens', func) >> counts
+
+        enjin = Enjin((nums,))
+        enjin.start()
     
+        self.assertEqual(counts.get_data(), {'Odds': 6, 'Evens': 5})   
 
     
     
