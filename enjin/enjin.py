@@ -1,7 +1,5 @@
 #!/usr/bin/python
 
-# Hello world python program
-import pygame
 import sys
 import traceback
 import math
